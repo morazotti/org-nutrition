@@ -416,7 +416,6 @@
 (defun org-nutrition--search-food (_food _weight)
   nil)
 
-
 (defun org-nutrition--catalog-entry-at-point ()
   "Return catalog entry plist at point if it looks like a food/recipe entry.
 
@@ -527,56 +526,136 @@ Returns a normalized entry plist, or nil if API plist is nil."
           :type (format "%s" (or (plist-get api-plist :type) "")))))
 
 ;;;###autoload
-(defun org-nutrition-food-or-recipe-capture ()
-  "Catalog a food/recipe and optionally use it to fill a meal entry.
+(defun org-nutrition--catalog-food-entry-from-user (name)
+  "Prompt user for catalog info for food NAME and return plist entry."
+  (let* ((portion (read-string "Portion (e.g. 100g): " org-nutrition-default-portion))
+         (calories (org-nutrition--read-number-as-string (format "Calories (kcal) per %s: " portion)))
+         (fats (org-nutrition--read-number-as-string (format "Fats (g) per %s: " portion)))
+         (carbs (org-nutrition--read-number-as-string (format "Carbs (g) per %s: " portion)))
+         (protein (org-nutrition--read-number-as-string (format "Protein (g) per %s: " portion))))
+    (list :name name :portion portion
+          :calories calories :fats fats :carbs carbs :protein protein
+          :type "food")))
 
-Flow:
-1) Ask for item name.
-2) Look for exact match (case-insensitive) under `org-nutrition-foods-and-recipes-heading'.
-   If found, offer to use its macros to create a meal entry via `org-nutrition-capture'.
-3) If not found, try API via `org-nutrition--search-food' (stub for now).
-4) If still not found, ask user to catalog manually.
-5) Ensure the entry exists (create if needed) with an Org PROPERTIES drawer."
+(defun org-nutrition--log-existing-entry (name existing)
+  "Log an EXISTING entry for NAME into the daily table."
+  (let ((org-nutrition-use-api-default nil))
+    (cl-letf (((symbol-function #'org-nutrition--read-field)
+               (lambda (prompt &optional initial)
+                 (cond
+                  ((string-match-p "\\`Food name:" prompt) name)
+                  (t (read-string prompt initial)))))
+              ((symbol-function #'org-nutrition--nutrition-from-api-or-manual)
+               (lambda (_food weight)
+                 (let* ((portion (or (plist-get existing :portion) org-nutrition-default-portion))
+                        (portion-num (string-to-number (replace-regexp-in-string "[^0-9.]" "" portion)))
+                        (w (string-to-number (string-trim (or weight "0"))))
+                        (factor (if (> portion-num 0) (/ (float w) portion-num) 1.0))
+                        (cal (org-nutrition--format-number
+                              (* factor (string-to-number (or (plist-get existing :calories) "0")))))
+                        (prot (org-nutrition--format-number
+                               (* factor (string-to-number (or (plist-get existing :protein) "0")))))
+                        (carbs (org-nutrition--format-number
+                                (* factor (string-to-number (or (plist-get existing :carbs) "0")))))
+                        (fat (org-nutrition--format-number
+                              (* factor (string-to-number (or (plist-get existing :fats) "0"))))))
+                   (list cal prot carbs fat "")))))
+      (org-nutrition-capture))))
+
+(defun org-nutrition-food-capture ()
+  "Catalog a food and optionally use it to fill a meal entry."
   (interactive)
-  (let ((name (string-trim (read-string "Food/recipe name: "))))
+  (let ((name (string-trim (read-string "Food name: "))))
     (when (org-nutrition--string-empty-p name)
       (user-error "Empty name"))
     (org-nutrition--with-target-buffer
      (lambda ()
        (let* ((found-pos (org-nutrition--find-food-or-recipe name))
               (existing (when found-pos
-                          (goto-char found-pos)
-                          (org-nutrition--catalog-entry-at-point))))
-         (cond
-          (existing
-           (when (y-or-n-p (format "'%s' já catalogado. Usar para preencher uma refeição agora? " name))
-             (let ((org-nutrition-use-api-default nil))
-               (cl-letf (((symbol-function #'org-nutrition--read-field)
-                          (lambda (prompt &optional initial)
-                            (cond
-                             ((string-match-p "\\`Food name:" prompt) name)
-                             (t (or initial (read-string prompt initial))))))
-                         ((symbol-function #'org-nutrition--nutrition-from-api-or-manual)
-                          (lambda (_food weight)
-                            ;; Scale catalog macros (per portion) into requested weight (g).
-                            (let* ((portion (or (plist-get existing :portion) org-nutrition-default-portion))
-                                   (portion-num (string-to-number (replace-regexp-in-string "[^0-9.]" "" portion)))
-                                   (w (string-to-number (string-trim (or weight "0"))))
-                                   (factor (if (> portion-num 0) (/ w portion-num) 1.0))
-                                   (cal (org-nutrition--format-number (* factor (string-to-number (plist-get existing :calories)))))
-                                   (prot (org-nutrition--format-number (* factor (string-to-number (plist-get existing :protein)))))
-                                   (carbs (org-nutrition--format-number (* factor (string-to-number (plist-get existing :carbs)))))
-                                   (fat (org-nutrition--format-number (* factor (string-to-number (plist-get existing :fats))))))
-                              (list cal prot carbs fat "")))))
-                 (org-nutrition-capture))))
-          (t
-           ;; Not found locally: try API (may return nil).
-           (let* ((api (and (org-nutrition--ask-use-api-p)
-                            (org-nutrition--search-food name org-nutrition-default-portion)))
-                  (api-entry (org-nutrition--catalog-entry-from-api api))
-                  (entry (or api-entry (org-nutrition--catalog-entry-from-user name))))
-             (org-nutrition--ensure-food-or-recipe-entry entry)
-             (message "Catalogado: %s" name))))))))))
+                          (save-excursion
+                            (goto-char found-pos)
+                            (let ((entry (org-nutrition--catalog-entry-at-point)))
+                              (when (listp entry)
+                                (setq entry (plist-put entry :category (or (org-entry-get nil "CATEGORY") ""))))
+                              entry)))))
+         (cl-labels ((parse-float (s)
+                       (string-to-number (replace-regexp-in-string "[^0-9.]" "" (or s "0"))))
+                     (read-valid-num (prompt initial &optional max-val)
+                       (let ((val (string-trim (read-string prompt initial)))
+                             (num nil)
+                             (valid nil))
+                         (while (not valid)
+                           (cond
+                            ((not (string-match-p "^[0-9]*\\.?[0-9]+$" val))
+                             (message "Valor inválido! Deve ser numérico.")
+                             (sit-for 1.5)
+                             (setq val (string-trim (read-string prompt val))))
+                            ((and max-val (> max-val 0) (> (setq num (string-to-number val)) max-val))
+                             (message "Valor (%.2f) maior que a porção (%.2f)!" num max-val)
+                             (sit-for 1.5)
+                             (setq val (string-trim (read-string prompt val))))
+                            (t (setq valid t))))
+                         val))
+                     (get-entry-values (entry-name &optional default-entry)
+                       (let* ((def-portion (or (plist-get default-entry :portion) org-nutrition-default-portion))
+                              (portion (read-string "Portion (e.g. 100g): " def-portion))
+                              (limit (parse-float portion))
+                              (def-cal (plist-get default-entry :calories))
+                              (def-prot (plist-get default-entry :protein))
+                              (def-carbs (plist-get default-entry :carbs))
+                              (def-fat (plist-get default-entry :fats))
+                              (cal (read-valid-num (format "Calories (kcal) per %s: " portion) def-cal))
+                              (fat (read-valid-num (format "Fats (g) per %s: " portion) def-fat limit))
+                              (carbs (read-valid-num (format "Carbs (g) per %s: " portion) def-carbs limit))
+                              (prot (read-valid-num (format "Protein (g) per %s: " portion) def-prot limit)))
+                         (list :name entry-name :portion portion
+                               :calories cal :fats fat :carbs carbs :protein prot
+                               :type (or (plist-get default-entry :type) "food")))))
+           (cond
+            (existing
+             (when (y-or-n-p (format "'%s' já catalogado. Usar para preencher uma refeição agora? " name))
+               (org-nutrition--log-existing-entry name existing)))
+            (t
+             (let* ((use-api (org-nutrition--ask-use-api-p))
+                    (api (and use-api
+                              (org-nutrition--search-food name org-nutrition-default-portion)))
+                    (api-entry (org-nutrition--catalog-entry-from-api api))
+                    (entry (if api-entry
+                               (if (or (org-nutrition--string-empty-p (plist-get api-entry :calories))
+                                       (org-nutrition--string-empty-p (plist-get api-entry :protein))
+                                       (org-nutrition--string-empty-p (plist-get api-entry :carbs))
+                                       (org-nutrition--string-empty-p (plist-get api-entry :fats))
+                                       (y-or-n-p (format "Dados da API recebidos para '%s'. Editar/Verificar? " name)))
+                                   (get-entry-values name api-entry)
+                                 api-entry)
+                             (get-entry-values name)))
+                    (entry-name (or (plist-get entry :name) name))
+                    (category (or (plist-get entry :category)
+                                  (plist-get entry :type)
+                                  "")))
+               (setq entry (plist-put entry :name entry-name))
+               (org-nutrition--goto-or-create-top-heading org-nutrition-foods-and-recipes-heading)
+               (let ((pos (org-nutrition--find-food-or-recipe entry-name)))
+                 (unless pos
+                   (goto-char (save-excursion (org-end-of-subtree t t) (point)))
+                   (unless (bolp) (insert "\n"))
+                   (insert "** " entry-name "\n")
+                   (forward-line -1)
+                   (beginning-of-line))
+                 (org-back-to-heading t)
+                 (org-nutrition--ensure-food-or-recipe-entry entry)
+                 (when (and (stringp category) (not (org-nutrition--string-empty-p category)))
+                   (org-set-property "CATEGORY" category))
+                 (when (org-entry-get nil "TYPE")
+                   (org-delete-property "TYPE")))
+               (message "Catalogado: %s" entry-name)
+               (when (y-or-n-p (format "Usar '%s' para preencher uma refeição agora? " entry-name))
+                 (org-nutrition--log-existing-entry entry-name entry)))))))))))
+
+(defun org-nutrition-recipe-capture ()
+  "Catalog a recipe."
+  (interactive)
+  (message "Recipe capture to be implemented."))
 
 (defun org-nutrition--ask-use-api-p ()
   (y-or-n-p (format "Buscar dados na API para este alimento? (%s) "
@@ -663,5 +742,3 @@ Flow:
 
 (provide 'org-nutrition)
 ;; org-nutrition.el ends here
-
-;; Se quiser, eu adapto o template para: (1) somar macros diárias/semanais, (2) ler tabela de alimentos (CSV/Org table), ou (3) integrar com `org-roam`/`org-agenda`.
