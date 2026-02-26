@@ -567,7 +567,7 @@ Flow:
                                    (prot (org-nutrition--format-number (* factor (string-to-number (plist-get existing :protein)))))
                                    (carbs (org-nutrition--format-number (* factor (string-to-number (plist-get existing :carbs)))))
                                    (fat (org-nutrition--format-number (* factor (string-to-number (plist-get existing :fats))))))
-                              (list cal prot carbs fat ""))))
+                              (list cal prot carbs fat "")))))
                  (org-nutrition-capture))))
           (t
            ;; Not found locally: try API (may return nil).
