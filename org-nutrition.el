@@ -69,6 +69,7 @@
   "Default portion used when cataloging foods/recipes."
   :type 'string
   :group 'org-nutrition)
+
 (defcustom org-nutrition-meal-choices '("Breakfast" "Lunch" "Dinner" "Snack")
   "Allowed meal names for completion."
   :type '(repeat string)
@@ -104,6 +105,17 @@
 (defcustom org-nutrition-annual-table-columns
   '("Month" "Calories" "Protein(g)" "Carbs(g)" "Fat(g)" "Weight(g)")
   "Columns for the annual summary org-table."
+  :type '(repeat string)
+  :group 'org-nutrition)
+
+(defcustom org-nutrition-body-targets-heading "Body Info"
+  "Heading name for storing the BMR/targets."
+  :type 'string
+  :group 'org-nutrition)
+
+(defcustom org-nutrition-bmr-table-columns
+  '("Date" "Weight(kg)" "Height(cm)" "Age" "BMI" "Activity" "Goal" "BMR" "Target Cals")
+  "Columns for the body targets/BMR org-table."
   :type '(repeat string)
   :group 'org-nutrition)
 
@@ -1120,10 +1132,78 @@ Returns a normalized entry plist, or nil if API plist is nil."
       (org-nutrition--append-row-to-day-table cells))
     (message "Nutrition entry added")))
 
+(defun org-nutrition--ensure-body-targets-table ()
+  "Ensure the Body Info heading and table exist, and leave point ready for insertion."
+  (goto-char (point-min))
+  (let ((heading-regex (format "^\\* [ \t]*%s[ \t]*$" (regexp-quote org-nutrition-body-targets-heading)))
+        (heading-pos nil)
+        (heading-end nil))
+    (if (re-search-forward heading-regex nil t)
+        (progn
+          (setq heading-pos (match-beginning 0))
+          (setq heading-end (save-excursion (org-end-of-subtree t t) (point))))
+      (goto-char (point-max))
+      (unless (bolp) (insert "\n"))
+      (insert "\n* " org-nutrition-body-targets-heading "\n")
+      (setq heading-pos (line-beginning-position 0))
+      (setq heading-end (point-max)))
+      
+    (goto-char heading-pos)
+    (if (re-search-forward org-table-any-line-regexp heading-end t)
+        (goto-char (org-table-end))
+      ;; Generate table
+      (goto-char heading-end)
+      (insert "\n| " (mapconcat #'identity org-nutrition-bmr-table-columns " | ") " |\n")
+      (insert "|-" (mapconcat (lambda (_c) "-") org-nutrition-bmr-table-columns "+-") "-|\n"))))
+
+;;;###autoload
+(defun org-nutrition-bmr-capture ()
+  "Capture body measurements and calculate BMR/Caloric targets."
+  (interactive)
+  (let* ((weight (read-number "Weight (kg): "))
+         (height (read-number "Height (cm): "))
+         (age (read-number "Age: "))
+         (activity-choices '(("Sedentary (1.2)" . 1.2)
+                             ("Lightly active (1.375)" . 1.375)
+                             ("Moderately active (1.55)" . 1.55)
+                             ("Very active (1.725)" . 1.725)
+                             ("Extremely active (1.9)" . 1.9)))
+         (activity-str (completing-read "Activity level: " (mapcar #'car activity-choices) nil t))
+         (activity-factor (cdr (assoc activity-str activity-choices)))
+         (goal-choices '(("Loss (-300 kcal)" . -300)
+                         ("Keep (+0 kcal)" . 0)
+                         ("Gain (+300 kcal)" . 300)))
+         (goal-str (completing-read "Goal: " (mapcar #'car goal-choices) nil t))
+         (goal-offset (cdr (assoc goal-str goal-choices)))
+         
+         (date (format-time-string "%Y-%m-%d"))
+         (bmi (/ (float weight) (* (/ (float height) 100) (/ (float height) 100))))
+         (bmr (* activity-factor (+ (* 10 weight) (* 6.25 height) (* -5 age) 5)))
+         (target (+ bmr goal-offset)))
+         
+    (org-nutrition--with-target-buffer
+     (lambda ()
+       (org-nutrition--ensure-body-targets-table)
+       (insert "| " date " | "
+               (org-nutrition--format-number weight) " | "
+               (org-nutrition--format-number height) " | "
+               (number-to-string age) " | "
+               (format "%.1f" bmi) " | "
+               (org-nutrition--format-number activity-factor) " | "
+               goal-str " | "
+               (org-nutrition--format-number bmr) " | "
+               (org-nutrition--format-number target) " |\n")
+       (org-table-align)))
+    (message "Calculated BMI: %.1f | BMR: %s | Daily Target: %s kcal" 
+             bmi
+             (org-nutrition--format-number bmr)
+             (org-nutrition--format-number target))))
+
 (defvar org-nutrition-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C-c n c") #'org-nutrition-capture)
     (define-key map (kbd "C-c n i") #'org-nutrition-insert-entry)
+    (define-key map (kbd "C-c n b") #'org-nutrition-bmr-capture)
     map)
   "Keymap for `org-nutrition-mode'.")
 
