@@ -1,14 +1,61 @@
-
 * Tasks
 
-** TODO [#A] capturar comidas e receitas do usuário
+** TODO [#A] capturar comidas do usuário
+:PROPERTIES:
+:ID:       7a2b9c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d
+:END:
 Aqui, deve haver uma função ~org-nutrition-food-or-recipe-capture~ que cria, dentro de uma heading ~* Foods and recipes~ no próprio ~nutrition.org~, uma subheading com o nome da comida que o usuário chamou, com propriedades de macro nutrientes por porção definida pelo usuário (calories, fats, carbs, protein, e se é alimento ou receita). A porção padrão é 100g. Se um usuário cadastrar, por exemplo, ~peito de frango~, deve-se buscar primeiramente no heading em questão, depois na API, e só então pedir para o usuário catalogar.
 *** TODO [#B] função que cataloga uma certa entrada de uma tabela em um heading de ~* Foods and recipes~.
+:PROPERTIES:
+:ID:       b5c6d7e8-9f0a-1b2c-3d4e-5f6a7b8c9d0e
+:END:
 Ao criar uma entrada com capture, no final deve-se perguntar ao usuário se ele deseja salvar aquela entrada em ~* Foods and recipes~, reduzindo o uso de APIs.
-** TODO [#B] Colocar linha separando a total do restante
+*** TODO [#B] Adicionar lista de emojis em na categoria
+:PROPERTIES:
+:ID:       c1d2e3f4-a5b6-7c8d-9e0f-1a2b3c4d5e6f
+:END:
+O padrão é que cada alimento tenha uma categoria inserida -- considerando carne, frango, peixe, laticínios, vegetais, legumes, frutas, snacks. A categoria deve ser um emoji baseado em um alist como o exemplo
+#+begin_src emacs-lisp :tangle yes
+  (defvar org-nutrition--categories-alist
+    '(("meat" . 🍖)
+      ("chicken" . 🐔)
+      ("fish" . 🐟)
+      ("vegetable" . 🥕)
+      ("greens" . 🥬)
+      ("fruits" . 🍓)
+      ("snacks" . 🍕)
+      ...
+    )
+#+end_src
+e assim por diante. O usuário deve poder escolher um da lista ao capturar uma comida.
+
+** TODO [#A] capturar receitas do usuário
+O usuário deve poder lançar ~org-nutrition-recipe-capture~ para salvar uma receita. Nela, o usuário entra com os alimentos já capturados, alterando apenas o porção individual. Algo como
+#+begin_src org
+  ,* Linguiça ao molho
+    :PROPERTIES:
+    :INGREDIENT: [Linguiça toscana][350g]
+    :INGREDIENT: [Tomate pelado][400g]
+    :END:
+    receita foo bar baz
+#+end_src
+
+** TODO [#C] Colocar linha separando a total do restante
+:PROPERTIES:
+:ID:       d4e5f6a7-b8c9-0d1e-2f3a-4b5c6d7e8f9a
+:END:
 ** TODO [#B] desacoplar de um minor mode e utilizar chamadas externas
+:PROPERTIES:
+:ID:       e5f6a7b8-c9d0-1e2f-3a4b-5c6d7e8f9a0b
+:END:
 ** TODO [#B] criar funções úteis para o usuário utilizar com org-ql e coisas similares
+:PROPERTIES:
+:ID:       f6a7b8c9-d0e1-2f3a-4b5c-6d7e8f9a0b1c
+:END:
 ** TODO [#A] adicionar uma opção de calcular opções nutricionais
+:PROPERTIES:
+:ID:       a7b8c9d0-e1f2-3a4b-5c6d-7e8f9a0b1c2d
+:END:
 Se houver uma tabela com o nome definido em ~org-nutrition-body-information~, ele deve ser capaz de inferir a taxa basal de calorias etc de um usuário. Deve ter uma propriedade com "loss/keep/gain" permitindo o usuário definir se está em uma dieta de emagrecimento, ganho de massa etc. As informações da última linha dessa tabela devem ser as que valem - visto que o usuário pode ir alterando sua massa aos poucos lá.
 
 O cálculo é feito dessa maneira:
@@ -28,3 +75,42 @@ A tabela de atividade é a seguinte:
 | Moderado       | Exercício 3-5 dias/semana            |               1.55 |
 | Muito ativo    | Exercício 6-7 dias/semana            |              1.725 |
 | Extremo        | Exercício 2x/dia                     |                1.9 |
+
+Para emagrecer, 
+** TODO [#B] colocar isso tudo num template do org-capture -- se possível
+:PROPERTIES:
+:ID:       00b1f98c0ac4aa0a7bb41051803f0b32
+:END:
+
+** DONE [#C] Deixar tudo em ingles
+:PROPERTIES:
+:ID:       c16d244007104c536ed25fd613cb1e19
+:END:
+
+
+#+begin_reasoning
+**Defining the Function*
+
+I'm currently working on defining the function, =org-nutrition--generate-heading-id=, which will generate the desired hash. My focus is on ensuring it correctly takes the Org mode heading name as input, and subsequently compute a hash value from it. I need to make sure the hashing process is efficient and reliable.
+
+
+
+#+end_reasoning
+
+Aqui está uma função que gera um hash MD5 baseado no título do heading atual e define a propriedade =ID=.
+
+#+begin_src emacs-lisp
+(defun org-nutrition--generate-id-from-heading ()
+  "Gera um ID determinístico (hash MD5) baseado no título do heading atual."
+  (interactive)
+  (when (org-at-heading-p)
+    (let* ((title (org-get-heading t t t t)) ;; t t t t remove TODOs, tags, cookies e prioridade
+           (hash (md5 title)))
+      (org-set-property "ID" hash)
+      (message "ID gerado para '%s': %s" title hash))))
+#+end_src
+
+#+RESULTS:
+: org-nutrition--generate-id-from-heading
+
+Para usar, posicione o cursor sobre um heading e execute =M-x org-nutrition-generate-id-from-heading=.
