@@ -4,7 +4,7 @@
 :PROPERTIES:
 :ID:       7a2b9c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d
 :END:
-Aqui, deve haver uma função ~org-nutrition-food-or-recipe-capture~ que cria, dentro de uma heading ~* Foods and recipes~ no próprio ~nutrition.org~, uma subheading com o nome da comida que o usuário chamou, com propriedades de macro nutrientes por porção definida pelo usuário (calories, fats, carbs, protein, e se é alimento ou receita). A porção padrão é 100g. Se um usuário cadastrar, por exemplo, ~peito de frango~, deve-se buscar primeiramente no heading em questão, depois na API, e só então pedir para o usuário catalogar.
+Aqui, deve haver funções ~org-nutrition-food-capture~ e ~org-nutrition-recipe-capture~ que criam, dentro de uma heading ~* Foods~ ou ~* Recipes~ no próprio ~nutrition.org~, uma subheading com o nome da comida que o usuário chamou, com propriedades de macro nutrientes por porção definida pelo usuário (calories, fats, carbs, protein, e se é alimento ou receita). A porção padrão é 100g. Se um usuário cadastrar, por exemplo, ~peito de frango~, deve-se buscar primeiramente no heading em questão, depois na API, e só então pedir para o usuário catalogar.
 *** TODO [#B] função que cataloga uma certa entrada de uma tabela em um heading de ~* Foods and recipes~.
 :PROPERTIES:
 :ID:       b5c6d7e8-9f0a-1b2c-3d4e-5f6a7b8c9d0e
@@ -39,6 +39,7 @@ O usuário deve poder lançar ~org-nutrition-recipe-capture~ para salvar uma rec
     :END:
     receita foo bar baz
 #+end_src
+Ele linka possíveis ingredientes (foods) do usuário e calcula corretamente os macros. Pode ser inserida normalmente ao fazer um ~org-nutrition-capture~.
 
 ** TODO [#C] Colocar linha separando a total do restante
 :PROPERTIES:

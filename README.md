@@ -28,7 +28,8 @@ Small helpers to log meals/macros in an Org file, plus a simple catalog of foods
 - `M-x org-nutrition-capture`
   - Prompts for a meal entry and appends it to the daily table inside `org-nutrition-target-file`.
 
-- `M-x org-nutrition-food-or-recipe-capture`
+- `M-x org-nutrition-food-capture`
+- `M-x org-nutrition-recipe-capture`
   - Catalogs a food/recipe under `* Foods and recipes` in `org-nutrition-target-file`.
   - If the item already exists (case-insensitive exact heading match), it offers to use the saved macros to fill a meal entry (delegates to `org-nutrition-capture`).
 
