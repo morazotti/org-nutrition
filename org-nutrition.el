@@ -488,6 +488,23 @@ Tries the br.openfoodfacts.org endpoint first, falling back to world if needed."
       (setq result (org-nutrition--execute-api-search world-url name)))
     result))
 
+(defun org-nutrition--get-all-catalog-entries ()
+  "Return an alist of all cataloged foods and recipes: ((NAME . PLIST) ...)"
+  (org-nutrition--with-target-buffer
+   (lambda ()
+     (let ((entries nil))
+       (org-map-entries
+        (lambda ()
+          (let ((type (org-entry-get nil "TYPE"))
+                (cal (org-entry-get nil "CALORIES")))
+            (when (or (member type '("food" "recipe"))
+                      cal)
+              (push (cons (org-get-heading t t t t)
+                          (org-nutrition--catalog-entry-at-point))
+                    entries))))
+        t 'file)
+       (nreverse entries)))))
+
 (defun org-nutrition--catalog-entry-at-point ()
   "Return catalog entry plist at point if it looks like a food/recipe entry.
 
@@ -549,11 +566,12 @@ Returns point at the matching heading or nil."
          (choice (completing-read "Category: " choices nil t)))
     (cdr (assoc choice choices))))
 
-(defun org-nutrition--ensure-food-or-recipe-entry (entry)
+(defun org-nutrition--ensure-food-or-recipe-entry (entry &optional ingredients)
   "Ensure an ENTRY exists under Foods or Recipes depending on type.
 
 ENTRY is a plist:
   (:name STRING :portion STRING :calories STRING :fats STRING :carbs STRING :protein STRING :type STRING)
+INGREDIENTS is a list of cons cells (NAME . WEIGHT-STRING).
 
 Returns point at the entry heading."
   (let* ((name (plist-get entry :name))
@@ -582,6 +600,19 @@ Returns point at the entry heading."
       (org-set-property "CARBS" carbs)
       (org-set-property "PROTEIN" protein)
       (org-set-property "TYPE" type)
+      
+      (when ingredients
+        (save-excursion
+          (org-back-to-heading t)
+          (let ((end-of-drawer (save-excursion (org-end-of-meta-data) (point))))
+            (while (re-search-forward "^[ \t]*:INGREDIENT:.*$" end-of-drawer t)
+              (delete-region (line-beginning-position) (1+ (line-end-position)))
+              (setq end-of-drawer (save-excursion (org-end-of-meta-data) (point))))
+            (org-back-to-heading t)
+            (when (re-search-forward "^[ \t]*:END:[ \t]*$" end-of-drawer t)
+              (goto-char (match-beginning 0))
+              (dolist (ing ingredients)
+                (insert (format "    :INGREDIENT: [%s][%s]\n" (car ing) (cdr ing))))))))
       (point))))
 
 (defun org-nutrition--catalog-entry-from-user (name)
@@ -732,81 +763,69 @@ Returns a normalized entry plist, or nil if API plist is nil."
                
                (when (and (stringp category) (not (org-nutrition--string-empty-p category)))
                  (org-set-property "CATEGORY" category))
-               (when (org-entry-get nil "TYPE")
-                 (org-delete-property "TYPE"))
                (message "Cataloged: %s" entry-name)
                (when (y-or-n-p (format "Use '%s' to fill a meal entry now? " entry-name))
                  (org-nutrition--log-existing-entry entry-name entry)))))))))))
 
 (defun org-nutrition-recipe-capture ()
-  "Catalog a recipe and optionally use it to fill a meal entry."
+  "Catalog a custom recipe composed of ingredients."
   (interactive)
   (let ((name (string-trim (read-string "Recipe Name: "))))
     (when (org-nutrition--string-empty-p name)
       (user-error "Empty name"))
-    (org-nutrition--with-target-buffer
-     (lambda ()
-       (let* ((found-pos (org-nutrition--find-entry-in-subtree org-nutrition-recipes-heading name))
-              (existing (when found-pos
-                          (save-excursion
-                            (goto-char found-pos)
-                            (let ((entry (org-nutrition--catalog-entry-at-point)))
-                              entry)))))
-         (cl-labels ((parse-float (s)
-                       (string-to-number (replace-regexp-in-string "[^0-9.]" "" (or s "0"))))
-                     (read-valid-num (prompt initial &optional max-val)
-                       (let* ((map (make-sparse-keymap))
-                              (check-and-exit
-                               (lambda ()
-                                 (interactive)
-                                 (let* ((val (string-trim (minibuffer-contents)))
-                                        (num nil))
-                                   (cond
-                                    ((string-empty-p val)
-                                     (exit-minibuffer))
-                                    ((not (string-match-p "^[0-9]*\\.?[0-9]+$" val))
-                                     (minibuffer-message (propertize " [Invalid value! Must be numeric.]" 'face 'error)))
-                                    ((and max-val (> max-val 0) (> (setq num (string-to-number val)) max-val))
-                                     (minibuffer-message (propertize (format " [Value (%.2f) greater than portion (%.2f)!]" num max-val) 'face 'error)))
-                                    (t
-                                     (exit-minibuffer)))))))
-                         (set-keymap-parent map minibuffer-local-map)
-                         (define-key map (kbd "RET") check-and-exit)
-                         (define-key map (kbd "C-j") check-and-exit)
-                         (let ((minibuffer-local-map map))
-                           (string-trim (read-string prompt initial)))))
-                     (get-entry-values (entry-name &optional default-entry)
-                       (let* ((def-portion (or (plist-get default-entry :portion) org-nutrition-default-portion))
-                              (portion (read-string "Portion (e.g. 100g): " def-portion))
-                              (limit (parse-float portion))
-                              (def-cal (plist-get default-entry :calories))
-                              (def-prot (plist-get default-entry :protein))
-                              (def-carbs (plist-get default-entry :carbs))
-                              (def-fat (plist-get default-entry :fats))
-                              (cal (read-valid-num (format "Calories (kcal) per %s: " portion) def-cal))
-                              (fat (read-valid-num (format "Fats (g) per %s: " portion) def-fat limit))
-                              (carbs (read-valid-num (format "Carbs (g) per %s: " portion) def-carbs limit))
-                              (prot (read-valid-num (format "Protein (g) per %s: " portion) def-prot limit)))
-                         (list :name entry-name :portion portion
-                               :calories cal :fats fat :carbs carbs :protein prot
-                               :type "recipe"))))
-           (cond
-            (existing
-             (when (y-or-n-p (format "'%s' already cataloged. Use it to fill a meal entry now? " name))
-               (org-nutrition--log-existing-entry name existing)))
-            (t
-             (let* ((entry (get-entry-values name))
-                    (entry-name (or (plist-get entry :name) name)))
-               (setq entry (plist-put entry :name entry-name))
-               (setq entry (plist-put entry :type "recipe"))
-               
-               (org-nutrition--ensure-food-or-recipe-entry entry)
-               
-               (when (org-entry-get nil "TYPE")
-                 (org-delete-property "TYPE"))
-               (message "Cataloged: %s" entry-name)
-               (when (y-or-n-p (format "Use '%s' to fill a meal entry now? " entry-name))
-                 (org-nutrition--log-existing-entry entry-name entry)))))))))))
+      
+    (let* ((catalog (org-nutrition--get-all-catalog-entries))
+           (choices (cons "[ DONE ]" (mapcar #'car catalog)))
+           (ingredients nil)
+           (sum-weight 0.0)
+           (sum-cal 0.0)
+           (sum-prot 0.0)
+           (sum-carbs 0.0)
+           (sum-fat 0.0))
+      
+      (catch 'done
+        (while t
+          (let ((ing-name (completing-read "\nIngredient ([ DONE ] to finish): " choices nil t)))
+            (cond
+             ((or (org-nutrition--string-empty-p ing-name)
+                  (string= ing-name "[ DONE ]"))
+              (throw 'done nil))
+             ((not (assoc ing-name catalog))
+              (message "Ingredient not found: %s" ing-name)
+              (sit-for 1.5))
+             (t
+              (let* ((ing-entry (cdr (assoc ing-name catalog)))
+                     (portion-str (or (plist-get ing-entry :portion) org-nutrition-default-portion))
+                     (portion-num (string-to-number (replace-regexp-in-string "[^0-9.]" "" portion-str)))
+                     (def-w-str (format "%sg" portion-num))
+                     (weight-str (read-string (format "Weight for %s (default %s): " ing-name def-w-str) nil nil def-w-str))
+                     (weight-num (string-to-number (replace-regexp-in-string "[^0-9.]" "" weight-str)))
+                     (factor (if (> portion-num 0) (/ (float weight-num) portion-num) 1.0)))
+                
+                (push (cons ing-name weight-str) ingredients)
+                (setq sum-weight (+ sum-weight weight-num))
+                (setq sum-cal (+ sum-cal (* factor (string-to-number (or (plist-get ing-entry :calories) "0")))))
+                (setq sum-prot (+ sum-prot (* factor (string-to-number (or (plist-get ing-entry :protein) "0")))))
+                (setq sum-carbs (+ sum-carbs (* factor (string-to-number (or (plist-get ing-entry :carbs) "0")))))
+                (setq sum-fat (+ sum-fat (* factor (string-to-number (or (plist-get ing-entry :fats) "0")))))))))))
+                
+      (let* ((default-portion (format "%dg" (round sum-weight)))
+             (portion (read-string (format "Total Recipe Portion (default %s): " default-portion) nil nil default-portion))
+             (entry (list :name name
+                          :portion portion
+                          :calories (org-nutrition--format-number sum-cal)
+                          :protein (org-nutrition--format-number sum-prot)
+                          :carbs (org-nutrition--format-number sum-carbs)
+                          :fats (org-nutrition--format-number sum-fat)
+                          :type "recipe")))
+                          
+        (org-nutrition--with-target-buffer
+         (lambda ()
+           (org-nutrition--ensure-food-or-recipe-entry entry (nreverse ingredients))))
+           
+        (message "Cataloged Recipe: %s" name)
+        (when (y-or-n-p (format "Use '%s' to fill a meal entry now? " name))
+          (org-nutrition--log-existing-entry name entry))))))
 
 (defun org-nutrition--ask-use-api-p ()
   (y-or-n-p (format "Fetch API data for this item? (%s) "
