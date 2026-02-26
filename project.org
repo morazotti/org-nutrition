@@ -1,0 +1,30 @@
+
+* Tasks
+
+** TODO [#A] capturar comidas e receitas do usuário
+Aqui, deve haver uma função ~org-nutrition-food-or-recipe-capture~ que cria, dentro de uma heading ~* Foods and recipes~ no próprio ~nutrition.org~, uma subheading com o nome da comida que o usuário chamou, com propriedades de macro nutrientes por porção definida pelo usuário (calories, fats, carbs, protein, e se é alimento ou receita). A porção padrão é 100g. Se um usuário cadastrar, por exemplo, ~peito de frango~, deve-se buscar primeiramente no heading em questão, depois na API, e só então pedir para o usuário catalogar.
+*** TODO [#B] função que cataloga uma certa entrada de uma tabela em um heading de ~* Foods and recipes~.
+Ao criar uma entrada com capture, no final deve-se perguntar ao usuário se ele deseja salvar aquela entrada em ~* Foods and recipes~, reduzindo o uso de APIs.
+** TODO [#B] Colocar linha separando a total do restante
+** TODO [#B] desacoplar de um minor mode e utilizar chamadas externas
+** TODO [#B] criar funções úteis para o usuário utilizar com org-ql e coisas similares
+** TODO [#A] adicionar uma opção de calcular opções nutricionais
+Se houver uma tabela com o nome definido em ~org-nutrition-body-information~, ele deve ser capaz de inferir a taxa basal de calorias etc de um usuário. Deve ter uma propriedade com "loss/keep/gain" permitindo o usuário definir se está em uma dieta de emagrecimento, ganho de massa etc. As informações da última linha dessa tabela devem ser as que valem - visto que o usuário pode ir alterando sua massa aos poucos lá.
+
+O cálculo é feito dessa maneira:
+
+
+#+begin_src emacs-lisp
+  (setq-local imc (/ peso (* 0.01 0.01 altura altura)))
+  (setq-local bmr 
+    (* atividade (+ (* 10 peso) (* 6.25 altura) (* -5 idade) 5)))
+  (- bmr 300) ;; para emagrecer
+#+end_src
+
+A tabela de atividade é a seguinte:
+| Estilo de vida | Frequência                           | Fator de atividade |
+| Sedentário     | Trabalho sentado / nenhuma atividade |                1.2 |
+| Pouco ativo    | Exercício 1-3 dias/semana            |              1.375 |
+| Moderado       | Exercício 3-5 dias/semana            |               1.55 |
+| Muito ativo    | Exercício 6-7 dias/semana            |              1.725 |
+| Extremo        | Exercício 2x/dia                     |                1.9 |
