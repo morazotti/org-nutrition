@@ -101,6 +101,12 @@
   :type '(repeat string)
   :group 'org-nutrition)
 
+(defcustom org-nutrition-annual-table-columns
+  '("Month" "Calories" "Protein(g)" "Carbs(g)" "Fat(g)" "Weight(g)")
+  "Columns for the annual summary org-table."
+  :type '(repeat string)
+  :group 'org-nutrition)
+
 (defcustom org-nutrition-daily-total-label "TOTAL"
   "Label used in the Food column for the daily totals row."
   :type 'string
@@ -434,14 +440,17 @@
           (while (re-search-forward (format "^#\\+NAME:[ \t]*%s[ \t]*$" table-name)
                                     (save-excursion (org-end-of-subtree t t) (point)) t)
             (let ((tbeg (line-beginning-position)))
-              (when (re-search-forward "^\\([ \t]*\n\\|\\*\\)"
-                                       (save-excursion (org-end-of-subtree t t) (point)) t)
-                (goto-char (match-beginning 0)))
+              (forward-line 1)
+              (while (and (< (point) (point-max))
+                          (looking-at "^[ \t]*\\(|\\|#\\+TBLFM:\\|$\\)"))
+                (forward-line 1))
               (delete-region tbeg (point)))))
         
         ;; Insert new table
         (goto-char month-pos)
         (forward-line 1)
+        (while (looking-at "^[ \t]*\n")
+          (delete-region (point) (1+ (point))))
         (insert "\n#+NAME: " (format "monthly_summary_%s" (replace-regexp-in-string "-" "_" month-str)) "\n")
         (insert "| " (mapconcat #'identity org-nutrition-monthly-table-columns " | ") " |\n")
         (insert "|-" (mapconcat (lambda (_c) "-") org-nutrition-monthly-table-columns "+-") "-|\n")
@@ -462,6 +471,101 @@
             (setq count (1+ count)))
           
           (insert "|-" (mapconcat (lambda (_c) "-") org-nutrition-monthly-table-columns "+-") "-|\n")
+          (if (> count 0)
+              (insert "| AVERAGE | "
+                      (org-nutrition--format-number (/ sum-cal count)) " | "
+                      (org-nutrition--format-number (/ sum-prot count)) " | "
+                      (org-nutrition--format-number (/ sum-carbs count)) " | "
+                      (org-nutrition--format-number (/ sum-fat count)) " | "
+                      (org-nutrition--format-number (/ sum-weight count)) " |\n")
+            (insert "| AVERAGE | 0 | 0 | 0 | 0 | 0 |\n")))
+        (forward-line -1)
+        (org-table-align)
+        (insert "\n")))
+    (org-nutrition--update-annual-summary-table)))
+
+(defun org-nutrition--update-annual-summary-table ()
+  "Compile monthly averages for the current year into a summary table."
+  (save-excursion
+    (let* ((year-str (org-nutrition--format-year))
+           (year-regex (format "^\\* [ \t]*%s[ \t]*$" (regexp-quote year-str)))
+           (month-regex "^\\*\\* [ \t]*\\([0-9]\\{4\\}-[0-9]\\{2\\}\\).*")
+           (year-pos nil)
+           (year-end nil)
+           (totals nil))
+      (goto-char (point-min))
+      (when (re-search-forward year-regex nil t)
+        (setq year-pos (match-beginning 0))
+        (setq year-end (save-excursion (org-end-of-subtree t t) (point)))
+        (goto-char year-pos)
+        ;; Collect averages from each month
+        (while (re-search-forward month-regex year-end t)
+          (let* ((month-date-str (match-string 1))
+                 (month-end-pos (save-excursion (org-end-of-subtree t t) (point)))
+                 (month-pos-match (match-beginning 0)))
+            (save-excursion
+              (goto-char month-pos-match)
+              (let ((table-name (format "monthly_summary_%s" (replace-regexp-in-string "-" "_" month-date-str))))
+                (when (re-search-forward (format "^#\\+NAME:[ \t]*%s[ \t]*$" table-name) month-end-pos t)
+                  (let ((average-row nil))
+                    (while (and (re-search-forward org-table-dataline-regexp month-end-pos t)
+                                (not average-row))
+                      (let ((cells (org-split-string (buffer-substring-no-properties
+                                                      (line-beginning-position)
+                                                      (line-end-position))
+                                                     "[ \t]*|[ \t]*")))
+                        (when (and (> (length cells) 2)
+                                   (string= (string-trim (car cells)) "AVERAGE"))
+                          (setq average-row cells))))
+                    
+                    (when average-row
+                      (push (list month-date-str
+                                  (org-nutrition--maybe-number (nth 1 average-row)) ; calories
+                                  (org-nutrition--maybe-number (nth 2 average-row)) ; protein
+                                  (org-nutrition--maybe-number (nth 3 average-row)) ; carbs
+                                  (org-nutrition--maybe-number (nth 4 average-row)) ; fats
+                                  (org-nutrition--maybe-number (nth 5 average-row))) ; weight
+                            totals))))))))
+        (setq totals (nreverse totals))
+        
+        ;; Delete old table
+        (goto-char year-pos)
+        (forward-line 1)
+        (let ((table-name (format "annual_summary_%s" year-str)))
+          (while (re-search-forward (format "^#\\+NAME:[ \t]*%s[ \t]*$" table-name)
+                                    (save-excursion (org-end-of-subtree t t) (point)) t)
+            (let ((tbeg (line-beginning-position)))
+              (forward-line 1)
+              (while (and (< (point) (point-max))
+                          (looking-at "^[ \t]*\\(|\\|#\\+TBLFM:\\|$\\)"))
+                (forward-line 1))
+              (delete-region tbeg (point)))))
+              
+        ;; Insert new table
+        (goto-char year-pos)
+        (forward-line 1)
+        (while (looking-at "^[ \t]*\n")
+          (delete-region (point) (1+ (point))))
+        (insert "\n#+NAME: " (format "annual_summary_%s" year-str) "\n")
+        (insert "| " (mapconcat #'identity org-nutrition-annual-table-columns " | ") " |\n")
+        (insert "|-" (mapconcat (lambda (_c) "-") org-nutrition-annual-table-columns "+-") "-|\n")
+        
+        (let ((sum-cal 0.0) (sum-prot 0.0) (sum-carbs 0.0) (sum-fat 0.0) (sum-weight 0.0) (count 0))
+          (dolist (row totals)
+            (insert "| " (car row) " | "
+                    (org-nutrition--format-number (nth 1 row)) " | "
+                    (org-nutrition--format-number (nth 2 row)) " | "
+                    (org-nutrition--format-number (nth 3 row)) " | "
+                    (org-nutrition--format-number (nth 4 row)) " | "
+                    (org-nutrition--format-number (nth 5 row)) " |\n")
+            (setq sum-cal (+ sum-cal (nth 1 row)))
+            (setq sum-prot (+ sum-prot (nth 2 row)))
+            (setq sum-carbs (+ sum-carbs (nth 3 row)))
+            (setq sum-fat (+ sum-fat (nth 4 row)))
+            (setq sum-weight (+ sum-weight (nth 5 row)))
+            (setq count (1+ count)))
+          
+          (insert "|-" (mapconcat (lambda (_c) "-") org-nutrition-annual-table-columns "+-") "-|\n")
           (if (> count 0)
               (insert "| AVERAGE | "
                       (org-nutrition--format-number (/ sum-cal count)) " | "

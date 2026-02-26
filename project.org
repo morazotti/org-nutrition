@@ -80,12 +80,12 @@ A tabela de atividade é a seguinte:
 | Muito ativo    | Exercício 6-7 dias/semana            |              1.725 |
 | Extremo        | Exercício 2x/dia                     |                1.9 |
 
-Para emagrecer, 
+Para emagrecer, nos mantemos \(\sim300\)kcal abaixo da taxa basal. Para ganhar massa, ficamos \(\sim300\)kcal acima da taxa basal.
 ** TODO [#B] colocar isso tudo num template do org-capture -- se possível
 :PROPERTIES:
 :ID:       00b1f98c0ac4aa0a7bb41051803f0b32
 :END:
-** TODO [#B] médias por dia mensais e anuais
+** DONE [#B] médias por dia mensais e anuais
 :PROPERTIES:
 :ID:       635c637d0e29f71e295d2152ae832041
 :END:
@@ -122,3 +122,8 @@ Aqui está uma função que gera um hash MD5 baseado no título do heading atual
 : org-nutrition--generate-id-from-heading
 
 Para usar, posicione o cursor sobre um heading e execute =M-x org-nutrition-generate-id-from-heading=.
+* Bugs
+** TODO [#C] Linhas espúrias sob as tabelas de resumo do mês e do ano.
+:PROPERTIES:
+:ID:       c26c4bec790c5e5cafa35b7b174b1afa
+:END:
