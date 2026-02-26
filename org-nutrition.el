@@ -95,6 +95,12 @@
   :type '(repeat string)
   :group 'org-nutrition)
 
+(defcustom org-nutrition-monthly-table-columns
+  '("Date" "Calories" "Protein(g)" "Carbs(g)" "Fat(g)" "Weight(g)")
+  "Columns for the monthly summary org-table."
+  :type '(repeat string)
+  :group 'org-nutrition)
+
 (defcustom org-nutrition-daily-total-label "TOTAL"
   "Label used in the Food column for the daily totals row."
   :type 'string
@@ -378,6 +384,96 @@
       (unless (bolp) (insert "\n"))
       (insert tblfm "\n"))))
 
+(defun org-nutrition--update-monthly-summary-table ()
+  "Compile daily totals for the current month into a summary table."
+  (save-excursion
+    (let* ((month-str (org-nutrition--format-month))
+           (month-regex (format "^\\*\\* [ \t]*%s[ \t]*$" (regexp-quote month-str)))
+           (day-regex "^\\*\\*\\* [ \t]*\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\).*")
+           (month-pos nil)
+           (month-end nil)
+           (totals nil))
+      (goto-char (point-min))
+      (when (re-search-forward month-regex nil t)
+        (setq month-pos (match-beginning 0))
+        (setq month-end (save-excursion (org-end-of-subtree t t) (point)))
+        (goto-char month-pos)
+        ;; Collect totals from each day
+        (while (re-search-forward day-regex month-end t)
+          (let* ((date-str (match-string 1))
+                 (day-end (save-excursion (org-end-of-subtree t t) (point)))
+                 (day-pos (match-beginning 0)))
+            (save-excursion
+              (goto-char day-pos)
+              (when (re-search-forward org-table-any-line-regexp day-end t)
+                (goto-char (match-beginning 0))
+                (let ((totals-row nil))
+                  (save-excursion
+                    (while (and (re-search-forward org-table-dataline-regexp day-end t)
+                                (not totals-row))
+                      (let ((cells (org-split-string (buffer-substring-no-properties
+                                                      (line-beginning-position)
+                                                      (line-end-position))
+                                                     "[ \t]*|[ \t]*")))
+                        (when (and (> (length cells) 2)
+                                   (string= (string-trim (car cells)) org-nutrition-daily-total-label))
+                          (setq totals-row cells)))))
+                  (when totals-row
+                    (push (list date-str
+                                (org-nutrition--maybe-number (nth 3 totals-row)) ; calories
+                                (org-nutrition--maybe-number (nth 4 totals-row)) ; protein
+                                (org-nutrition--maybe-number (nth 5 totals-row)) ; carbs
+                                (org-nutrition--maybe-number (nth 6 totals-row)) ; fats
+                                (org-nutrition--maybe-number (nth 2 totals-row))) ; weight
+                          totals)))))))
+        (setq totals (nreverse totals))
+        ;; Rebuild the table
+        (goto-char month-pos)
+        (forward-line 1)
+        (let ((table-name (format "monthly_summary_%s" (replace-regexp-in-string "-" "_" month-str))))
+          (while (re-search-forward (format "^#\\+NAME:[ \t]*%s[ \t]*$" table-name)
+                                    (save-excursion (org-end-of-subtree t t) (point)) t)
+            (let ((tbeg (line-beginning-position)))
+              (when (re-search-forward "^\\([ \t]*\n\\|\\*\\)"
+                                       (save-excursion (org-end-of-subtree t t) (point)) t)
+                (goto-char (match-beginning 0)))
+              (delete-region tbeg (point)))))
+        
+        ;; Insert new table
+        (goto-char month-pos)
+        (forward-line 1)
+        (insert "\n#+NAME: " (format "monthly_summary_%s" (replace-regexp-in-string "-" "_" month-str)) "\n")
+        (insert "| " (mapconcat #'identity org-nutrition-monthly-table-columns " | ") " |\n")
+        (insert "|-" (mapconcat (lambda (_c) "-") org-nutrition-monthly-table-columns "+-") "-|\n")
+        
+        (let ((sum-cal 0.0) (sum-prot 0.0) (sum-carbs 0.0) (sum-fat 0.0) (sum-weight 0.0) (count 0))
+          (dolist (row totals)
+            (insert "| " (car row) " | "
+                    (org-nutrition--format-number (nth 1 row)) " | "
+                    (org-nutrition--format-number (nth 2 row)) " | "
+                    (org-nutrition--format-number (nth 3 row)) " | "
+                    (org-nutrition--format-number (nth 4 row)) " | "
+                    (org-nutrition--format-number (nth 5 row)) " |\n")
+            (setq sum-cal (+ sum-cal (nth 1 row)))
+            (setq sum-prot (+ sum-prot (nth 2 row)))
+            (setq sum-carbs (+ sum-carbs (nth 3 row)))
+            (setq sum-fat (+ sum-fat (nth 4 row)))
+            (setq sum-weight (+ sum-weight (nth 5 row)))
+            (setq count (1+ count)))
+          
+          (insert "|-" (mapconcat (lambda (_c) "-") org-nutrition-monthly-table-columns "+-") "-|\n")
+          (if (> count 0)
+              (insert "| AVERAGE | "
+                      (org-nutrition--format-number (/ sum-cal count)) " | "
+                      (org-nutrition--format-number (/ sum-prot count)) " | "
+                      (org-nutrition--format-number (/ sum-carbs count)) " | "
+                      (org-nutrition--format-number (/ sum-fat count)) " | "
+                      (org-nutrition--format-number (/ sum-weight count)) " |\n")
+            (insert "| AVERAGE | 0 | 0 | 0 | 0 | 0 |\n")))
+        (forward-line -1)
+        (org-table-align)
+        (insert "\n")))))
+
 (defun org-nutrition--ensure-table-present ()
   (save-excursion
     (org-nutrition--ensure-tree)
@@ -396,6 +492,7 @@
         (insert (org-nutrition--table-header-row) "\n")
         (insert (org-nutrition--table-separator-row) "\n")
         (insert (org-nutrition--table-row (make-list (length org-nutrition-table-columns) "")) "\n")
+        (insert (org-nutrition--table-separator-row) "\n")
         (insert (org-nutrition--table-row (make-list (length org-nutrition-table-columns) "")) "\n")
         (forward-line -1)
         (org-table-align)
@@ -416,6 +513,7 @@
         (while (looking-at-p org-table-hline-regexp)
           (forward-line -1))
         (end-of-line)
+        (insert "\n" (org-nutrition--table-separator-row))
         (insert "\n" (org-nutrition--table-row (make-list (length org-nutrition-table-columns) "")))
         (setq pos (line-beginning-position)))
       (goto-char pos)
@@ -437,7 +535,8 @@
       (org-table-align)))
   (org-table-recalculate t)
   (org-nutrition--update-daily-total-row)
-  (org-table-recalculate t))
+  (org-table-recalculate t)
+  (org-nutrition--with-target-buffer #'org-nutrition--update-monthly-summary-table))
 
 (defun org-nutrition--with-target-buffer (fn)
   (let* ((file org-nutrition-target-file)

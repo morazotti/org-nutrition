@@ -1,6 +1,6 @@
 * Tasks
 
-** TODO [#A] capturar comidas do usuário
+** DONE [#A] capturar comidas do usuário
 :PROPERTIES:
 :ID:       7a2b9c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d
 :END:
@@ -29,7 +29,7 @@ O padrão é que cada alimento tenha uma categoria inserida -- considerando carn
 #+end_src
 e assim por diante. O usuário deve poder escolher um da lista ao capturar uma comida.
 
-** TODO [#A] capturar receitas do usuário
+** DONE [#A] capturar receitas do usuário
 :PROPERTIES:
 :ID:       45667c8801a00fd0f0e87203fafecdc4
 :END:
@@ -44,7 +44,7 @@ O usuário deve poder lançar ~org-nutrition-recipe-capture~ para salvar uma rec
 #+end_src
 Ele linka possíveis ingredientes (foods) do usuário e calcula corretamente os macros. Pode ser inserida normalmente ao fazer um ~org-nutrition-capture~.
 
-** TODO [#C] Colocar linha separando a total do restante
+** DONE [#C] Colocar linha separando a total do restante
 :PROPERTIES:
 :ID:       d4e5f6a7-b8c9-0d1e-2f3a-4b5c6d7e8f9a
 :END:
@@ -85,7 +85,11 @@ Para emagrecer,
 :PROPERTIES:
 :ID:       00b1f98c0ac4aa0a7bb41051803f0b32
 :END:
-
+** TODO [#B] médias por dia mensais e anuais
+:PROPERTIES:
+:ID:       635c637d0e29f71e295d2152ae832041
+:END:
+Gostaria que no heading do mês, fosse introduzida e atualizada uma tabela que apresenta o resumo de cada dia (calorias, macros, pesos) e mostrasse como compilado as médias por dia. 
 ** DONE [#C] Deixar tudo em ingles
 :PROPERTIES:
 :ID:       c16d244007104c536ed25fd613cb1e19
