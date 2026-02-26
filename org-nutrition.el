@@ -228,12 +228,9 @@
                                      (line-end-position))
                                     "[ \t]*|[ \t]*")))
         (setq cells (cl-remove-if (lambda (s) (org-nutrition--string-empty-p (string-trim s))) cells))
-        (let* ((meal (nth 0 cells))
-               (food (nth 1 cells)))
+        (let* ((meal (nth 0 cells)))
           (and (stringp meal)
-               (stringp food)
-               (string= (string-trim meal) org-nutrition-daily-total-label)
-               (string= (string-trim food) org-nutrition-daily-total-label)))))))
+               (string= (string-trim meal) org-nutrition-daily-total-label)))))))
 
 (defun org-nutrition--table-last-data-row-position ()
   (save-excursion
@@ -268,7 +265,7 @@
     (insert org-nutrition-daily-total-label)
     (org-table-goto-column food-col)
     (org-table-blank-field)
-    (insert org-nutrition-daily-total-label)))
+    (insert "")))
 
 (defun org-nutrition--maybe-number (s)
   (let ((s (string-trim (or s ""))))
@@ -277,8 +274,8 @@
 (defun org-nutrition--format-number (n)
   (if (and (numberp n) (zerop n))
       ""
-    (let ((s (format "%.2f" (float n))))
-      (replace-regexp-in-string "\\.00\\'" "" s))))
+    (let ((s (format "%.1f" (float n))))
+      (replace-regexp-in-string "\\.0\\'" "" s))))
 
 (defun org-nutrition--compute-daily-totals ()
   (save-excursion
@@ -445,39 +442,51 @@
 (defun org-nutrition--with-target-buffer (fn)
   (let* ((file org-nutrition-target-file)
          (buf (or (find-buffer-visiting file)
-                  (find-file-noselect file))))
+                  (find-file-noselect file)))
+         (result nil))
     (with-current-buffer buf
       (unless (derived-mode-p 'org-mode)
         (org-mode))
       (save-excursion
-        (funcall fn))
+        (setq result (funcall fn)))
       (save-buffer))
-    buf))
+    result))
 
-(defun org-nutrition--search-food (name _weight)
-  "Search Open Food Facts API for NAME. Returns a plist or nil.
-Uses `url-retrieve-synchronously` to avoid external dependencies."
-  (let ((url (format "https://world.openfoodfacts.org/cgi/search.pl?search_terms=%s&search_simple=1&action=process&json=1"
-                     (url-hexify-string name)))
-        (url-request-method "GET"))
-    (message "Fetching '%s' from API..." name)
+(defun org-nutrition--execute-api-search (url name)
+  "Helper to fetch JSON from Open Food Facts URL and extract a plist."
+  (message "Fetching '%s' from API (%s)..." name (url-host (url-generic-parse-url url)))
+  (let ((url-request-method "GET")
+        (p nil))
     (with-current-buffer (url-retrieve-synchronously url)
       (goto-char (point-min))
       (re-search-forward "^$" nil t) ;; Skip HTTP headers
       (let* ((json-object-type 'alist)
              (data (ignore-errors (json-read)))
-             (products (alist-get 'products data))
-             (p (and (> (length products) 0) (elt products 0))))
-        (kill-buffer (current-buffer))
-        (when p
-          (let ((nutri (alist-get 'nutriments p)))
-            (list :name (alist-get 'product_name p)
-                  :calories (format "%s" (or (alist-get 'energy-kcal_100g nutri) 0))
-                  :protein (format "%s" (or (alist-get 'proteins_100g nutri) 0))
-                  :carbs (format "%s" (or (alist-get 'carbohydrates_100g nutri) 0))
-                  :fats (format "%s" (or (alist-get 'fat_100g nutri) 0))
-                  :portion "100g"
-                  :type "food")))))))
+             (products (alist-get 'products data)))
+        (setq p (and (> (length products) 0) (elt products 0))))
+      (kill-buffer (current-buffer)))
+    (when p
+      (let ((nutri (alist-get 'nutriments p)))
+        (list :name (alist-get 'product_name p)
+              :calories (format "%s" (or (alist-get 'energy-kcal_100g nutri) 0))
+              :protein (format "%s" (or (alist-get 'proteins_100g nutri) 0))
+              :carbs (format "%s" (or (alist-get 'carbohydrates_100g nutri) 0))
+              :fats (format "%s" (or (alist-get 'fat_100g nutri) 0))
+              :portion "100g"
+              :type "food")))))
+              
+(defun org-nutrition--search-food (name _weight)
+  "Search Open Food Facts API for NAME. Returns a plist or nil.
+Uses `url-retrieve-synchronously` to avoid external dependencies.
+Tries the br.openfoodfacts.org endpoint first, falling back to world if needed."
+  (let* ((br-url (format "https://br.openfoodfacts.org/cgi/search.pl?search_terms=%s&search_simple=1&action=process&json=1"
+                         (url-hexify-string name)))
+         (world-url (format "https://world.openfoodfacts.org/cgi/search.pl?search_terms=%s&search_simple=1&action=process&json=1"
+                            (url-hexify-string name)))
+         (result (org-nutrition--execute-api-search br-url name)))
+    (unless result
+      (setq result (org-nutrition--execute-api-search world-url name)))
+    result))
 
 (defun org-nutrition--catalog-entry-at-point ()
   "Return catalog entry plist at point if it looks like a food/recipe entry.

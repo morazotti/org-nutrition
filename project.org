@@ -5,7 +5,7 @@
 :ID:       7a2b9c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d
 :END:
 Aqui, deve haver funções ~org-nutrition-food-capture~ e ~org-nutrition-recipe-capture~ que criam, dentro de uma heading ~* Foods~ ou ~* Recipes~ no próprio ~nutrition.org~, uma subheading com o nome da comida que o usuário chamou, com propriedades de macro nutrientes por porção definida pelo usuário (calories, fats, carbs, protein, e se é alimento ou receita). A porção padrão é 100g. Se um usuário cadastrar, por exemplo, ~peito de frango~, deve-se buscar primeiramente no heading em questão, depois na API, e só então pedir para o usuário catalogar.
-*** TODO [#B] função que cataloga uma certa entrada de uma tabela em um heading de ~* Foods and recipes~.
+*** DONE [#B] função que cataloga uma certa entrada de uma tabela em um heading de ~* Foods and recipes~.
 :PROPERTIES:
 :ID:       b5c6d7e8-9f0a-1b2c-3d4e-5f6a7b8c9d0e
 :END:
@@ -30,6 +30,9 @@ O padrão é que cada alimento tenha uma categoria inserida -- considerando carn
 e assim por diante. O usuário deve poder escolher um da lista ao capturar uma comida.
 
 ** TODO [#A] capturar receitas do usuário
+:PROPERTIES:
+:ID:       45667c8801a00fd0f0e87203fafecdc4
+:END:
 O usuário deve poder lançar ~org-nutrition-recipe-capture~ para salvar uma receita. Nela, o usuário entra com os alimentos já capturados, alterando apenas o porção individual. Algo como
 #+begin_src org
   ,* Linguiça ao molho
