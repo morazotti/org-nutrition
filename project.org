@@ -10,7 +10,7 @@ Aqui, deve haver funções ~org-nutrition-food-capture~ e ~org-nutrition-recipe-
 :ID:       b5c6d7e8-9f0a-1b2c-3d4e-5f6a7b8c9d0e
 :END:
 Ao criar uma entrada com capture, no final deve-se perguntar ao usuário se ele deseja salvar aquela entrada em ~* Foods and recipes~, reduzindo o uso de APIs.
-*** TODO [#B] Adicionar lista de emojis em na categoria
+*** DONE [#B] Adicionar lista de emojis em na categoria
 :PROPERTIES:
 :ID:       c1d2e3f4-a5b6-7c8d-9e0f-1a2b3c4d5e6f
 :END:
@@ -45,7 +45,7 @@ Ele linka possíveis ingredientes (foods) do usuário e calcula corretamente os 
 :PROPERTIES:
 :ID:       d4e5f6a7-b8c9-0d1e-2f3a-4b5c6d7e8f9a
 :END:
-** TODO [#B] desacoplar de um minor mode e utilizar chamadas externas
+** DONE [#B] desacoplar de um minor mode e utilizar chamadas externas
 :PROPERTIES:
 :ID:       e5f6a7b8-c9d0-1e2f-3a4b-5c6d7e8f9a0b
 :END:
