@@ -1084,6 +1084,9 @@ API results are automatically saved to the catalog for future reuse."
 ;;; ─── Entry Capture ───────────────────────────────────────────────────────────
 
 ;;;###autoload
+
+;TODO: (#1) [[id:133c9eb604e2540a066ec8eb6ce8ef36][Capturar outros dias]]
+
 (defun org-nutrition-capture ()
   "Capture a nutrition entry into the target Org file."
   (interactive)

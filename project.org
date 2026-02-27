@@ -1,5 +1,4 @@
 * Tasks
-
 ** DONE [#A] capturar comidas do usuário
 :PROPERTIES:
 :ID:       7a2b9c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d
@@ -96,35 +95,20 @@ Gostaria que no heading do mês, fosse introduzida e atualizada uma tabela que a
 :ID:       c16d244007104c536ed25fd613cb1e19
 :END:
 
-
-#+begin_reasoning
-**Defining the Function*
-
-I'm currently working on defining the function, =org-nutrition--generate-heading-id=, which will generate the desired hash. My focus is on ensuring it correctly takes the Org mode heading name as input, and subsequently compute a hash value from it. I need to make sure the hashing process is efficient and reliable.
-
-
-
-#+end_reasoning
-
-Aqui está uma função que gera um hash MD5 baseado no título do heading atual e define a propriedade =ID=.
-
-#+begin_src emacs-lisp
-(defun org-nutrition--generate-id-from-heading ()
-  "Gera um ID determinístico (hash MD5) baseado no título do heading atual."
-  (interactive)
-  (when (org-at-heading-p)
-    (let* ((title (org-get-heading t t t t)) ;; t t t t remove TODOs, tags, cookies e prioridade
-           (hash (md5 title)))
-      (org-set-property "ID" hash)
-      (message "ID gerado para '%s': %s" title hash))))
-#+end_src
-
-#+RESULTS:
-: org-nutrition--generate-id-from-heading
-
 Para usar, posicione o cursor sobre um heading e execute =M-x org-nutrition-generate-id-from-heading=.
+** TODO [#B] 20260227161013 Capturar outros dias 
+:PROPERTIES:
+:ID:       133c9eb604e2540a066ec8eb6ce8ef36
+:TASK_NUM: 1
+:END:
+Entrada utilizando ARG ou outra função. Ao chamar, deve perguntar o dia com alguma função interna do org (~org-timestamp~, ~org-date~ ou algo assim) e completar a tabela corretamente. Ao chamar com ARG ARG, utiliza a data escolhida anteriormente, caso haja uma, ou pede uma data.
+
 * Bugs
+:PROPERTIES:
+:ID:       b672a740-34c4-4606-93eb-687c97e6558b
+:END:
 ** TODO [#C] Linhas espúrias sob as tabelas de resumo do mês e do ano.
 :PROPERTIES:
 :ID:       c26c4bec790c5e5cafa35b7b174b1afa
 :END:
+
