@@ -1013,21 +1013,36 @@ API results are automatically saved to the catalog for future reuse."
   (let ((name (string-trim (read-string "Recipe Name: "))))
     (when (org-nutrition--string-empty-p name)
       (user-error "Empty name"))
-    (let* ((catalog  (org-nutrition--get-all-catalog-entries))
-           (choices  (cons "[ DONE ]" (mapcar #'car catalog)))
+    (let* ((catalog     (org-nutrition--get-all-catalog-entries))
+           (taco        (org-nutrition--taco-available-entries catalog))
+           (all-entries (append catalog taco))
+           (choices     (cons "[ DONE ]" (mapcar #'car all-entries)))
            ingredients
-           (sums     (make-list 5 0.0))) ; weight cal prot carbs fat
+           (sums        (make-list 5 0.0))) ; weight cal prot carbs fat
       (catch 'done
         (while t
-          (let ((ing-name (completing-read "\nIngredient ([ DONE ] to finish): " choices nil t)))
+          (let* ((table
+                  (lambda (str pred action)
+                    (if (eq action 'metadata)
+                        `(metadata
+                          (annotation-function
+                           . ,(lambda (candidate)
+                                (if (string= candidate "[ DONE ]")
+                                    nil
+                                  (let* ((entry (cdr (assoc candidate all-entries)))
+                                         (type  (or (plist-get entry :type) "")))
+                                    (unless (org-nutrition--string-empty-p type)
+                                      (concat " :: " type)))))))
+                      (complete-with-action action choices str pred))))
+                 (ing-name (completing-read "\nIngredient ([ DONE ] to finish): " table nil t)))
             (cond
              ((or (org-nutrition--string-empty-p ing-name) (string= ing-name "[ DONE ]"))
               (throw 'done nil))
-             ((not (assoc ing-name catalog))
+             ((not (assoc ing-name all-entries))
               (message "Ingredient not found: %s" ing-name)
               (sit-for 1.5))
              (t
-              (let* ((ing-entry  (cdr (assoc ing-name catalog)))
+              (let* ((ing-entry  (cdr (assoc ing-name all-entries)))
                      (pstr       (or (plist-get ing-entry :portion) org-nutrition-default-portion))
                      (pnum       (string-to-number (replace-regexp-in-string "[^0-9.]" "" pstr)))
                      (def-w-str  (format "%sg" pnum))
@@ -1035,6 +1050,13 @@ API results are automatically saved to the catalog for future reuse."
                                               nil nil def-w-str))
                      (weight-num (string-to-number (replace-regexp-in-string "[^0-9.]" "" weight-str)))
                      (factor     (if (> pnum 0) (/ (float weight-num) pnum) 1.0)))
+                ;; Automatically save TACO entries to catalog if used
+                (when (string= (plist-get ing-entry :type) "taco")
+                  (org-nutrition--with-target-buffer
+                   (lambda ()
+                     (org-nutrition--ensure-food-or-recipe-entry
+                      (plist-put (copy-sequence ing-entry) :type "food"))))
+                  (message "Saved '%s' to catalog." ing-name))
                 (push (cons ing-name weight-str) ingredients)
                 (cl-loop for key in '(:calories :protein :carbs :fats)
                          for i from 1
