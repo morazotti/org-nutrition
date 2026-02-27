@@ -820,29 +820,47 @@ INITIAL is the pre-filled value. Returns the trimmed string."
       (string-trim (read-string prompt initial)))))
 
 
+;;; ─── TACO Integration ────────────────────────────────────────────────────────
+
+(defcustom org-nutrition-use-taco t
+  "If non-nil, include TACO bundle entries in food name completion.
+Requires `org-nutrition-taco' to be loaded."
+  :type 'boolean
+  :group 'org-nutrition)
+
+(defun org-nutrition--taco-available-entries (catalog)
+  "Return TACO entries not already present in CATALOG, or nil if unavailable."
+  (when (and org-nutrition-use-taco
+             (featurep 'org-nutrition-taco))
+    (cl-remove-if (lambda (e) (assoc (car e) catalog))
+                  (org-nutrition-taco-entries))))
+
 (defun org-nutrition--read-food-name ()
-  "Prompt for a food/recipe name with completion from the catalog.
-Candidates are annotated with their type (food/recipe).
-Accepts free text — the user is not restricted to cataloged items.
-Returns (NAME . CATALOG-ENTRY-OR-NIL)."
-  (let* ((catalog (org-nutrition--get-all-catalog-entries))
+  "Prompt for a food/recipe name with completion from catalog + TACO bundle.
+Catalog entries are annotated with their type; TACO entries show ':: taco'.
+Accepts free text — the user is not restricted to listed items.
+Returns (NAME . PLIST-OR-NIL)."
+  (let* ((catalog     (org-nutrition--get-all-catalog-entries))
+         (taco        (org-nutrition--taco-available-entries catalog))
+         (all-entries (append catalog taco))
          (table
           (lambda (str pred action)
             (if (eq action 'metadata)
                 `(metadata
                   (annotation-function
                    . ,(lambda (candidate)
-                        (let* ((entry (cdr (assoc candidate catalog)))
+                        (let* ((entry (cdr (assoc candidate all-entries)))
                                (type  (or (plist-get entry :type) "")))
                           (unless (org-nutrition--string-empty-p type)
                             (concat " :: " type))))))
-              (complete-with-action action (mapcar #'car catalog) str pred))))
+              (complete-with-action action (mapcar #'car all-entries) str pred))))
          (name (string-trim (completing-read "Food name: " table nil nil))))
-    (cons name (cdr (assoc name catalog)))))
+    (cons name (cdr (assoc name all-entries)))))
 
 (defun org-nutrition--nutrition-from-catalog-or-api (food weight catalog-entry)
   "Return (cal protein carbs fat notes) for FOOD at WEIGHT grams.
-CATALOG-ENTRY is a plist if already resolved, or nil to trigger API/manual."
+CATALOG-ENTRY is a plist if already resolved, or nil to trigger API/manual.
+API results are automatically saved to the catalog for future reuse."
   (let* ((api        (unless catalog-entry
                        (and (org-nutrition--ask-use-api-p)
                             (org-nutrition--search-food food weight))))
@@ -854,9 +872,17 @@ CATALOG-ENTRY is a plist if already resolved, or nil to trigger API/manual."
          (portion (or (plist-get data-plist :portion) org-nutrition-default-portion))
          (notes   (or (plist-get data-plist :notes) ""))
          is-manual)
-    (if catalog-entry
-        (message "Using cataloged item '%s'." food)
-      (when api (message "Fetched '%s' from API." food)))
+    (cond
+     ((and catalog-entry (not (string= (plist-get catalog-entry :type) "taco")))
+      (message "Using cataloged item '%s'." food))
+     ((or api (and catalog-entry (string= (plist-get catalog-entry :type) "taco")))
+      (message "%s '%s' — saving to catalog."
+               (if api "Fetched" "TACO entry") food)
+      (org-nutrition--with-target-buffer
+       (lambda ()
+         (org-nutrition--ensure-food-or-recipe-entry
+          (list :name food :portion portion :calories cal
+                :protein protein :carbs carbs :fats fat :type "food"))))))
     (when (cl-some (lambda (v) (org-nutrition--string-empty-p (format "%s" v)))
                    (list cal protein carbs fat))
       (when (y-or-n-p "No complete data found (or skipped API). Insert manually? ")
@@ -979,7 +1005,7 @@ CATALOG-ENTRY is a plist if already resolved, or nil to trigger API/manual."
                  (org-set-property "CATEGORY" category))
                (message "Cataloged: %s" entry-name)
                (when (y-or-n-p (format "Use '%s' to fill a meal entry now? " entry-name))
-                 (org-nutrition--log-existing-entry entry-name entry))))))))))
+                 (org-nutrition--log-existing-entry entry-name entry)))))))))))
 ;;;###autoload
 (defun org-nutrition-recipe-capture ()
   "Catalog a custom recipe composed of ingredients."
